@@ -966,7 +966,20 @@ class MainWindow(QWidget):
     def mouseDoubleClickEvent(self, event):
         if self.title_bar.underMouse():
             self._toggle_maximize()
+        elif self.header.underMouse() and self._active_note_id is not None:
+            self._deselect_note()
         super().mouseDoubleClickEvent(event)
+
+    def _deselect_note(self):
+        """Deselektuje aktywną notatkę - wraca do pustego edytora."""
+        self._sync_editor_to_note()
+        self._active_note_id = None
+        self.header.setText("Notatnik")
+        self.setWindowTitle("Anti-Spaghetti")
+        self.editor.clear()
+        for btn in self._buttons:
+            btn.setChecked(False)
+        self._update_counters()
 
     # ─── zarzadzanie danymi ───
 
