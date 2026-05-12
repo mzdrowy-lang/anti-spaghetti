@@ -13,3 +13,5 @@ dist/
 build/
 .env
 .pytest_cache/
+hermes_inbox.txt
+hermes_outbox.txt
