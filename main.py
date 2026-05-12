@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QSplitter,
     QLabel,
-    QTextEdit,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QLineEdit,
@@ -115,7 +115,7 @@ def _build_qss(template: str, colors: dict) -> str:
     return template.format_map(colors)
 
 QSS_EDITOR_TPL = """
-QTextEdit {{
+QPlainTextEdit {{
     background-color: {BG_EDITOR};
     color: {TEXT_MAIN};
     border: none;
@@ -124,18 +124,18 @@ QTextEdit {{
     margin: 0px {EDITOR_MARGIN_SIDE}px {EDITOR_MARGIN_BOT}px {EDITOR_MARGIN_SIDE}px;
     selection-background-color: {ACCENT};
 }}
-QTextEdit QScrollBar:vertical {{
+QPlainTextEdit QScrollBar:vertical {{
     background: transparent;
     width: {SCROLLBAR_W}px;
     margin: 4px 0px;
 }}
-QTextEdit QScrollBar::handle:vertical {{
+QPlainTextEdit QScrollBar::handle:vertical {{
     background: {ACCENT};
     border-radius: {SCROLLBAR_RADIUS}px;
     min-height: 20px;
 }}
-QTextEdit QScrollBar::add-line:vertical,
-QTextEdit QScrollBar::sub-line:vertical {{
+QPlainTextEdit QScrollBar::add-line:vertical,
+QPlainTextEdit QScrollBar::sub-line:vertical {{
     height: 0px;
 }}
 """
@@ -460,6 +460,50 @@ class MainWindow(QWidget):
         if self._pin_hash is not None:
             QTimer.singleShot(100, self._show_lock_screen)
 
+        self._acquire_lock()
+
+    def _acquire_lock(self):
+        """Blokuje plik danych, by zapobiec konfliktom między instancjami."""
+        lock_path = self._data_path().with_suffix(".lock")
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                self._lock_file = open(lock_path, "w")
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                self._lock_file = open(lock_path, "w")
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._lock_file.write(str(os.getpid()))
+                self._lock_file.flush()
+        except Exception:
+            if hasattr(self, '_lock_file') and self._lock_file:
+                try:
+                    self._lock_file.close()
+                except Exception:
+                    pass
+            self._lock_file = None
+
+    def _release_lock(self):
+        """Zwalnia blokadę pliku."""
+        if not hasattr(self, '_lock_file') or not self._lock_file:
+            return
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+            self._lock_file.close()
+            lock_path = self._data_path().with_suffix(".lock")
+            if lock_path.exists():
+                lock_path.unlink()
+        except Exception:
+            pass
+        finally:
+            self._lock_file = None
+
     # ─── budowa UI ───
 
     def _setup_ui(self):
@@ -580,7 +624,7 @@ class MainWindow(QWidget):
         )
         left_layout.addWidget(self.header)
 
-        self.editor = QTextEdit()
+        self.editor = QPlainTextEdit()
         self.editor.setStyleSheet(QSS_EDITOR)
         self.editor.setFont(self._make_font(SIZES["BASE_FONT_SIZE"]))
         self.editor.setPlaceholderText("Zacznij pisać lub wklej tekst...")
@@ -1043,12 +1087,65 @@ class MainWindow(QWidget):
                 json.dump(self._notes, f, ensure_ascii=False, indent=2)
             os.replace(tmp_path, path)
         except Exception as e:
-            print(f"Błąd zapisu: {e}")
+            self._show_save_error(str(e))
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
                 except Exception:
                     pass
+
+    def _show_save_error(self, message: str):
+        """Wyświetla błąd zapisu."""
+        try:
+            C = self._theme_colors if hasattr(self, '_theme_colors') else THEMES["Klasyczny"]
+            msg_box = DraggableDialog(self)
+            msg_box.setFixedSize(360, 160)
+            msg_box.setStyleSheet(f"""
+                QDialog {{
+                    background-color: {C["BG_EDITOR"]};
+                    border: 1px solid #e74c3c;
+                    border-radius: 12px;
+                }}
+            """)
+            layout = QVBoxLayout(msg_box)
+            layout.setContentsMargins(24, 24, 24, 24)
+            layout.setSpacing(12)
+
+            lbl = QLabel("Błąd zapisu")
+            lbl.setFont(self._make_font(SIZES["BASE_FONT_SIZE"], bold=True))
+            lbl.setStyleSheet("color: #e74c3c; background: transparent;")
+            layout.addWidget(lbl)
+
+            msg_lbl = QLabel(f"Nie udało się zapisać danych:\n{message}")
+            msg_lbl.setFont(self._make_font(SIZES["SMALL_FONT_SIZE"]))
+            msg_lbl.setStyleSheet(f"color: {C['TEXT_MAIN']}; background: transparent;")
+            msg_lbl.setWordWrap(True)
+            layout.addWidget(msg_lbl)
+
+            btn = QPushButton("OK")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {C["ACCENT"]};
+                    color: {C["TEXT_MAIN"]};
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 0px;
+                    font-size: {SIZES["BASE_FONT_SIZE"]}px;
+                }}
+                QPushButton:hover {{
+                    background-color: {C["BG_BTN_HOVER"]};
+                }}
+            """)
+            btn.clicked.connect(msg_box.accept)
+            layout.addWidget(btn)
+
+            center = self.geometry().center()
+            msg_box.move(center.x() - msg_box.width() // 2, center.y() - msg_box.height() // 2)
+            msg_box.exec()
+            msg_box.deleteLater()
+        except Exception:
+            pass
 
     def _sync_editor_to_note(self):
         if self._active_note_id is not None:
@@ -2130,6 +2227,7 @@ class MainWindow(QWidget):
     def closeEvent(self, event):
         self._sync_editor_to_note()
         self.save_notes()
+        self._release_lock()
         event.accept()
 
 

@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 notes.json
 notes.json.tmp
+notes.json.lock
 .config
 fonts/
 *.egg-info/
