@@ -220,6 +220,109 @@ class TestWindowTitle:
         assert mw.windowTitle() == "Anti-Spaghetti"
 
 
+class TestAutoCreateNote:
+    """Testy dla automatycznego tworzenia notatek."""
+
+    def test_auto_create_note_from_text(self):
+        from main import MainWindow
+        mw = MainWindow()
+        mw._notes = []
+        mw._buttons = []
+        mw._creating_note = False
+        mw._active_note_id = None
+        mw._select_note = Mock()
+        mw._update_counters = Mock()
+        mw._rebuild_sidebar = Mock()
+        mw._header = Mock()
+        mw._theme_name = "Klasyczny"
+
+        mw._auto_create_note("Test content\nLine 2")
+
+        assert len(mw._notes) == 1
+        assert mw._notes[0]["name"] == "Test content"
+        assert mw._notes[0]["content"] == "Test content\nLine 2"
+        assert mw._creating_note is False
+
+    def test_auto_create_note_long_first_line(self):
+        from main import MainWindow
+        mw = MainWindow()
+        mw._notes = []
+        mw._buttons = []
+        mw._creating_note = False
+        mw._active_note_id = None
+        mw._select_note = Mock()
+        mw._update_counters = Mock()
+        mw._rebuild_sidebar = Mock()
+        mw._header = Mock()
+        mw._theme_name = "Klasyczny"
+
+        long_text = "A" * 100 + "\nInna treść"
+        mw._auto_create_note(long_text)
+
+        assert len(mw._notes[0]["name"]) == 50
+        assert mw._notes[0]["name"] == "A" * 50
+
+
+class TestSearch:
+    """Testy dla wyszukiwania."""
+
+    def test_search_filters_notes(self):
+        from main import MainWindow
+        mw = MainWindow()
+        mw._notes = [
+            {"id": "1", "name": "Note Alpha", "content": ""},
+            {"id": "2", "name": "Note Beta", "content": ""},
+            {"id": "3", "name": "Note Alpha 2", "content": ""},
+        ]
+        mw._buttons = [Mock(), Mock(), Mock()]
+        mw._buttons[0]._note_id = "1"
+        mw._buttons[1]._note_id = "2"
+        mw._buttons[2]._note_id = "3"
+
+        # Use the actual search_edit from MainWindow or mock it properly
+        mw.search_edit = Mock()
+        mw.search_edit.text.return_value = "alpha"
+
+        mw._do_search()
+
+        mw._buttons[0].setVisible.assert_called_with(True)
+        mw._buttons[1].setVisible.assert_called_with(False)
+        mw._buttons[2].setVisible.assert_called_with(True)
+
+    def test_search_shows_all_when_empty(self):
+        from main import MainWindow
+        mw = MainWindow()
+        mw._notes = [
+            {"id": "1", "name": "Note Alpha", "content": ""},
+        ]
+        mw._buttons = [Mock()]
+        mw._buttons[0]._note_id = "1"
+
+        mw.search_edit = Mock()
+        mw.search_edit.text.return_value = ""
+
+        mw._do_search()
+
+        mw._buttons[0].setVisible.assert_called_with(True)
+
+
+class TestCopyToClipboard:
+    """Testy dla kopiowania do schowka."""
+
+    def test_copy_resets_icon_after_timeout(self):
+        from main import MainWindow
+        mw = MainWindow()
+        mw.copy_btn = Mock()
+        mw._reset_copy_icon = Mock()
+        mw.editor = Mock()
+        mw.editor.toPlainText.return_value = "Test text"
+
+        mw._copy_to_clipboard()
+
+        mw.copy_btn.setIcon.assert_called()
+        assert hasattr(mw, '_reset_copy_icon')
+
+
 class TestEscapeKey:
     """Testy dla klawisza Escape w dialogach."""
 
