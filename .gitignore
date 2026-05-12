@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+notes.json
+notes.json.tmp
+.config
+fonts/
+*.egg-info/
+dist/
+build/
+.env
