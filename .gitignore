@@ -4,9 +4,12 @@ __pycache__/
 notes.json
 notes.json.tmp
 notes.json.lock
+notes.lock
+*.json.backup*
 .config
 fonts/
 *.egg-info/
 dist/
 build/
 .env
+.pytest_cache/
