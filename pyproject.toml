@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anti-spaghetti"
+version = "1.0.0"
+description = "Podręczny notatnik-składnica zbudowany w Pythonie z PyQt6"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Anti-Spaghetti Team"}
+]
+keywords = ["notatnik", "notes", "pyqt6", "gui", "markdown"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: News/Diary",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PyQt6>=6.4.0",
+    "QtAwesome>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-qt>=4.0",
+]
+
+[project.scripts]
+anti-spaghetti = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/TWOJ_USER/anti-spaghetti"
+Repository = "https://github.com/TWOJ_USER/anti-spaghetti"
+Issues = "https://github.com/TWOJ_USER/anti-spaghetti/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["test_main.py"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

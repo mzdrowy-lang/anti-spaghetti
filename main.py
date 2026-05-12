@@ -3,8 +3,20 @@ import json
 import os
 import uuid
 import hashlib
+import logging
 from pathlib import Path
 from datetime import datetime
+
+__version__ = "1.0.0"
+__app_name__ = "Anti-Spaghetti"
+
+# Konfiguracja logowania
+log = logging.getLogger(__app_name__)
+log.setLevel(logging.WARNING)
+if not log.handlers:
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(name)s [%(levelname)s] %(message)s"))
+    log.addHandler(handler)
 
 from PyQt6.QtGui import QFont, QPainter, QColor, QKeySequence, QShortcut, QFontDatabase, QRegularExpressionValidator
 from PyQt6.QtCore import Qt, QSize, QTimer, QRegularExpression, QRect
@@ -1076,7 +1088,7 @@ class MainWindow(QWidget):
             msg_box.exec()
             msg_box.deleteLater()
         except Exception:
-            print(f"BŁĄD DANYCH: {message}")
+            log.error("Błąd wyświetlania dialogu: %s", message)
 
     def _migrate_notes(self):
         now = datetime.now().isoformat()
@@ -2160,7 +2172,7 @@ class MainWindow(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        ver = QLabel("v1.0")
+        ver = QLabel(f"v{__version__}")
         ver.setFont(self._make_font(SIZES["SMALL_FONT_SIZE"]))
         ver.setStyleSheet(f"color: {C['TEXT_DIM']}; background: transparent;")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2247,8 +2259,11 @@ class MainWindow(QWidget):
 # ──────────────────────────────────────────────
 # ENTRY POINT
 # ──────────────────────────────────────────────
-if __name__ == "__main__":
+def main():
+    """Punkt wejścia aplikacji Anti-Spaghetti."""
     app = QApplication(sys.argv)
+    app.setApplicationName(__app_name__)
+    app.setApplicationVersion(__version__)
 
     font_dir = Path(__file__).parent / "fonts"
     if font_dir.exists():
@@ -2295,3 +2310,7 @@ if __name__ == "__main__":
     window.show()
 
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
