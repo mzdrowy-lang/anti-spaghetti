@@ -13,11 +13,16 @@ Podręczny notatnik-składnica zbudowany w Pythonie z PyQt6. Ciemny, minimalisty
 - Pasek dolny z licznikiem słów/tokens i czasem ostatniej edycji
 - Dwa motywy: Klasyczny i Ciemny
 - Ciemny pasek tytułowy na Windows 10/11
-- Skróty klawiszowe: Ctrl+S (zapisz), Ctrl+N (nowa), Ctrl+F (szukaj), Ctrl+D (usuń aktywną)
+- Skróty klawiszowe (patrz tabela poniżej)
 - Kontekstowe menu edytora (wytnij/kopiuj/wklej)
 - Atomowy zapis pliku (ochrona przed uszkodzeniem danych)
 - Migracja struktury danych (automatyczne dodawanie timestampów)
 - Font fallback (Intel One Mono → Consolas)
+- Ochrona PIN z PBKDF2 (bezpieczne haszowanie)
+- Nawigacja między notatkami (Ctrl+Tab / Ctrl+Shift+Tab)
+- Wizualne potwierdzenie zapisu
+- Kopie zapasowe uszkodzonych plików danych
+- Obsługa klawisza Escape w dialogach
 
 ## Wymagania
 
@@ -51,10 +56,19 @@ python main.py
 | Ctrl+N | Nowa notatka |
 | Ctrl+F | Szukaj |
 | Ctrl+D | Usuń aktywną notatkę |
+| Ctrl+Tab | Następna notatka |
+| Ctrl+Shift+Tab | Poprzednia notatka |
+| Ctrl++ | Zwiększ czcionkę |
+| Ctrl+- | Zmniejsz czcionkę |
+| Escape | Zamknij dialog |
 
 ## Dane
 
 Notatki są zapisywane w pliku `notes.json` obok `main.py`. Konfiguracja motywu w `.config`.
+
+## Bezpieczeństwo
+
+PIN jest hashowany algorytmem PBKDF2 z losowym solą (100 000 iteracji). W przypadku uszkodzenia pliku danych, aplikacja automatycznie tworzy kopię zapasową.
 
 ## Licencja
 

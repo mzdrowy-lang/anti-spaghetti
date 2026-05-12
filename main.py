@@ -6,7 +6,6 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QFont, QPainter, QColor, QKeySequence, QShortcut, QFontDatabase, QRegularExpressionValidator
 from PyQt6.QtCore import Qt, QSize, QTimer, QRegularExpression, QRect
 import qtawesome
@@ -103,7 +102,7 @@ SIZES = {
     "HEADER_PAD_BOT":     10,
     "EDITOR_MARGIN_BOT":  12,
     "EDITOR_MARGIN_SIDE": 12,
-"VIEWPORT_MARGIN_R":  14,
+    "VIEWPORT_MARGIN_R":  14,
     "RESIZE_MARGIN":       6,
     "FONT_SIZE_MIN":       8,
     "FONT_SIZE_MAX":      24,
@@ -261,6 +260,12 @@ class DraggableDialog(QDialog):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
 # ──────────────────────────────────────────────
 # KLASA: SidebarButton
@@ -425,6 +430,7 @@ class MainWindow(QWidget):
         self._active_note_id: str | None = None
         self._dirty = False
         self._pin_hash: str | None = None
+        self._pin_salt: bytes | None = None
         self._creating_note = False
         self._drag_pos = None
         self._resize_dir: str | None = None
@@ -728,6 +734,32 @@ class MainWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+d"), self).activated.connect(self._delete_current_note)
         QShortcut(QKeySequence("Ctrl+="), self).activated.connect(self._font_size_up)
         QShortcut(QKeySequence("Ctrl+-"), self).activated.connect(self._font_size_down)
+        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(self._next_note)
+        QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(self._prev_note)
+
+    def _next_note(self):
+        if not self._notes:
+            return
+        if self._active_note_id is None:
+            self._select_note(self._notes[0]["id"])
+            return
+        current_index = next(
+            (i for i, n in enumerate(self._notes) if n["id"] == self._active_note_id), -1
+        )
+        next_index = (current_index + 1) % len(self._notes)
+        self._select_note(self._notes[next_index]["id"])
+
+    def _prev_note(self):
+        if not self._notes:
+            return
+        if self._active_note_id is None:
+            self._select_note(self._notes[-1]["id"])
+            return
+        current_index = next(
+            (i for i, n in enumerate(self._notes) if n["id"] == self._active_note_id), 0
+        )
+        prev_index = (current_index - 1) % len(self._notes)
+        self._select_note(self._notes[prev_index]["id"])
 
     def _setup_auto_save(self):
         self._auto_save_timer = QTimer(self)
@@ -850,7 +882,7 @@ class MainWindow(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._resize_dir:
+        if self._resize_dir and self._resize_start_geo:
             delta = event.globalPosition().toPoint() - self._drag_pos
             geo = QRect(self._resize_start_geo)
             d = self._resize_dir
@@ -905,22 +937,89 @@ class MainWindow(QWidget):
                         return
                     data = json.loads(content)
                     if not isinstance(data, list):
-                        print("Błąd: notes.json nie jest listą")
+                        self._show_data_error("notes.json nie jest listą. Utworzono kopię zapasową.")
+                        self._backup_corrupted_file(path)
                         self._notes = []
                         return
                     self._notes = [
                         n for n in data
                         if isinstance(n, dict) and "id" in n and "name" in n
                     ]
+                    # Dodaj brakujące klucze
+                    for note in self._notes:
+                        note.setdefault("content", "")
+                        note.setdefault("created_at", datetime.now().isoformat())
+                        note.setdefault("updated_at", datetime.now().isoformat())
                     self._migrate_notes()
             except json.JSONDecodeError as e:
-                print(f"Błąd parsowania notes.json: {e}")
+                self._show_data_error(f"Błąd parsowania notes.json: {e}\nUtworzono kopię zapasową.")
+                self._backup_corrupted_file(path)
                 self._notes = []
             except Exception as e:
-                print(f"Błąd odczytu notes.json: {e}")
+                self._show_data_error(f"Błąd odczytu notes.json: {e}\nUtworzono kopię zapasową.")
+                self._backup_corrupted_file(path)
                 self._notes = []
         else:
             self._notes = []
+
+    def _backup_corrupted_file(self, path: Path):
+        """Tworzy kopię zapasową uszkodzonego pliku."""
+        try:
+            backup_path = path.with_suffix(f".json.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            import shutil
+            shutil.copy2(path, backup_path)
+        except Exception:
+            pass
+
+    def _show_data_error(self, message: str):
+        """Wyświetla dialog błędu danych."""
+        try:
+            C = self._theme_colors if hasattr(self, '_theme_colors') else THEMES["Klasyczny"]
+            msg_box = DraggableDialog(self)
+            msg_box.setFixedSize(400, 180)
+            msg_box.setStyleSheet(f"""
+                QDialog {{
+                    background-color: {C["BG_EDITOR"]};
+                    border: 1px solid #e74c3c;
+                    border-radius: 12px;
+                }}
+            """)
+            layout = QVBoxLayout(msg_box)
+            layout.setContentsMargins(24, 24, 24, 24)
+            layout.setSpacing(16)
+            
+            lbl = QLabel("Błąd danych")
+            lbl.setFont(self._make_font(SIZES["BASE_FONT_SIZE"], bold=True))
+            lbl.setStyleSheet("color: #e74c3c; background: transparent;")
+            layout.addWidget(lbl)
+            
+            msg_lbl = QLabel(message)
+            msg_lbl.setFont(self._make_font(SIZES["SMALL_FONT_SIZE"]))
+            msg_lbl.setStyleSheet(f"color: {C['TEXT_MAIN']}; background: transparent;")
+            msg_lbl.setWordWrap(True)
+            layout.addWidget(msg_lbl)
+            
+            btn = QPushButton("OK")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {C["ACCENT"]};
+                    color: {C["TEXT_MAIN"]};
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 0px;
+                    font-size: {SIZES["BASE_FONT_SIZE"]}px;
+                }}
+                QPushButton:hover {{
+                    background-color: {C["BG_BTN_HOVER"]};
+                }}
+            """)
+            btn.clicked.connect(msg_box.accept)
+            layout.addWidget(btn)
+            msg_box.exec()
+            msg_box.deleteLater()
+        except Exception:
+            print(f"BŁĄD DANYCH: {message}")
 
     def _migrate_notes(self):
         now = datetime.now().isoformat()
@@ -1114,12 +1213,13 @@ class MainWindow(QWidget):
                 "theme": self._theme_name,
                 "font_size": self._font_size,
             }
-            if self._pin_hash:
+            if self._pin_hash and self._pin_salt:
                 data["pin_hash"] = self._pin_hash
+                data["pin_salt"] = self._pin_salt.hex()
             with open(self._config_path(), "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            self._show_data_error(f"Błąd zapisu konfiguracji: {e}")
 
     def _load_config(self) -> dict:
         try:
@@ -1127,9 +1227,11 @@ class MainWindow(QWidget):
                 with open(self._config_path(), "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self._pin_hash = data.get("pin_hash", None)
+                    salt_hex = data.get("pin_salt", None)
+                    self._pin_salt = bytes.fromhex(salt_hex) if salt_hex else None
                     return data
-        except Exception:
-            pass
+        except Exception as e:
+            self._show_data_error(f"Błąd odczytu konfiguracji: {e}")
         return {}
 
     def _load_saved_theme(self) -> str:
@@ -1142,8 +1244,18 @@ class MainWindow(QWidget):
     # ─── PIN ───
 
     @staticmethod
-    def _hash_pin(pin: str) -> str:
-        return hashlib.sha256(pin.encode("utf-8")).hexdigest()
+    def _hash_pin(pin: str, salt: bytes = None) -> tuple[str, bytes]:
+        """Hasz PIN używając PBKDF2 z losowym solą."""
+        if salt is None:
+            salt = os.urandom(16)
+        key = hashlib.pbkdf2_hmac('sha256', pin.encode("utf-8"), salt, 100000)
+        return key.hex(), salt
+
+    @staticmethod
+    def _verify_pin(pin: str, stored_hash: str, salt: bytes) -> bool:
+        """Weryfikuje PIN przeciwko zapisanemu hashowi."""
+        key = hashlib.pbkdf2_hmac('sha256', pin.encode("utf-8"), salt, 100000)
+        return key.hex() == stored_hash
 
     def _pin_dialog(self, title: str, placeholder: str = "PIN") -> str | None:
         C = self._theme_colors
@@ -1264,7 +1376,7 @@ class MainWindow(QWidget):
             current = self._pin_dialog("Podaj aktualny PIN")
             if current is None:
                 return
-            if self._hash_pin(current) != self._pin_hash:
+            if not self._verify_pin(current, self._pin_hash, self._pin_salt):
                 self._show_pin_error("Nieprawidłowy PIN")
                 return
         new_pin = self._pin_dialog("Ustaw nowy PIN (4 cyfry)")
@@ -1276,7 +1388,7 @@ class MainWindow(QWidget):
         if new_pin != confirm:
             self._show_pin_error("PIN-y się różnią")
             return
-        self._pin_hash = self._hash_pin(new_pin)
+        self._pin_hash, self._pin_salt = self._hash_pin(new_pin)
         self._save_config()
 
     def _remove_pin(self):
@@ -1285,10 +1397,11 @@ class MainWindow(QWidget):
         current = self._pin_dialog("Podaj aktualny PIN, aby usunąć")
         if current is None:
             return
-        if self._hash_pin(current) != self._pin_hash:
+        if not self._verify_pin(current, self._pin_hash, self._pin_salt):
             self._show_pin_error("Nieprawidłowy PIN")
             return
         self._pin_hash = None
+        self._pin_salt = None
         self._save_config()
 
     def _show_pin_error(self, msg: str):
@@ -1430,7 +1543,7 @@ class MainWindow(QWidget):
                 pin_edit.setFocus()
                 pin_edit.selectAll()
                 return
-            if self._hash_pin(val) == self._pin_hash:
+            if self._verify_pin(val, self._pin_hash, self._pin_salt):
                 lock.accept()
             else:
                 err_label.setText("Nieprawidłowy PIN")
@@ -1637,6 +1750,7 @@ class MainWindow(QWidget):
         self._rebuild_sidebar()
         if was_active:
             self.header.setText("Notatnik")
+            self.setWindowTitle("Anti-Spaghetti")
             self.editor.clear()
             self._active_note_id = None
         self._update_counters()
@@ -1740,7 +1854,8 @@ class MainWindow(QWidget):
         for note in self._notes:
             if note["id"] == note_id:
                 self.header.setText(note["name"])
-                self.editor.setPlainText(note["content"])
+                self.setWindowTitle(f"{note['name']} — Anti-Spaghetti")
+                self.editor.setPlainText(note.get("content", ""))
                 break
         for btn in self._buttons:
             btn.setChecked(btn._note_id == note_id)
@@ -1755,6 +1870,18 @@ class MainWindow(QWidget):
     def _save_current(self):
         self._sync_editor_to_note()
         self.save_notes()
+        self._dirty = False
+        self._show_save_feedback()
+
+    def _show_save_feedback(self):
+        """Pokazuje krótkie potwierdzenie zapisu."""
+        d = self._theme_colors["TEXT_DIM"]
+        self.save_btn.setIcon(qtawesome.icon("fa5s.check", color=d))
+        QTimer.singleShot(1000, self._reset_save_icon)
+
+    def _reset_save_icon(self):
+        d = self._theme_colors["TEXT_DIM"]
+        self.save_btn.setIcon(qtawesome.icon("fa5s.save", color=d))
 
     def _copy_to_clipboard(self):
         text = self.editor.toPlainText()
@@ -1828,12 +1955,19 @@ class MainWindow(QWidget):
         if self._creating_note:
             return
         self._dirty = True
+        # Restartuj timer auto-zapisu
+        self._auto_save_timer.start(5000)
         if self._active_note_id is None:
             text = self.editor.toPlainText()
             if text.strip():
                 self._auto_create_note(text)
                 return
-        self._update_counters()
+        # Debounce - opóźnij aktualizację liczników
+        if not hasattr(self, '_counter_timer'):
+            self._counter_timer = QTimer(self)
+            self._counter_timer.setSingleShot(True)
+            self._counter_timer.timeout.connect(self._update_counters)
+        self._counter_timer.start(100)
 
     def _auto_create_note(self, text: str):
         self._creating_note = True
@@ -1857,9 +1991,7 @@ class MainWindow(QWidget):
         count = len(self._notes)
         self.count_label.setText(f"{count} elementów")
         text = self.editor.toPlainText()
-        tokens = max(1, len(text)) // 4
-        if not text.strip():
-            tokens = 0
+        tokens = max(1, len(text) // 4) if text.strip() else 0
         ts = ""
         if self._active_note_id is not None:
             note = next((n for n in self._notes if n["id"] == self._active_note_id), None)
@@ -1890,7 +2022,6 @@ class MainWindow(QWidget):
             return
         new_index = max(0, min(new_index, len(self._notes) - 1))
         note = self._notes.pop(old_index)
-        note["updated_at"] = datetime.now().isoformat()
         self._notes.insert(new_index, note)
 
     # ─── ustawienia – rozbudowane menu ───
