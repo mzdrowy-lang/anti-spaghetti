@@ -116,7 +116,7 @@ SIZES = {
     "EDITOR_MARGIN_BOT":  12,
     "EDITOR_MARGIN_SIDE": 12,
     "VIEWPORT_MARGIN_R":  14,
-    "RESIZE_MARGIN":       6,
+    "RESIZE_MARGIN":      10,
     "FONT_SIZE_MIN":       8,
     "FONT_SIZE_MAX":      24,
 }
@@ -527,7 +527,7 @@ class MainWindow(QWidget):
         self.resize(SIZES["WINDOW_WIDTH"], SIZES["WINDOW_HEIGHT"])
         self.setMinimumSize(SIZES["WINDOW_MIN_W"], SIZES["WINDOW_MIN_H"])
         self.setStyleSheet(f"background-color: {BG_APP};")
-        self._set_window_icon(BG_APP)
+        self._set_window_icon()
 
         self._title_font = self._load_title_font()
 
@@ -881,15 +881,16 @@ class MainWindow(QWidget):
         return Path(__file__).parent / ".config"
 
     @staticmethod
-    def _make_invisible_icon(color_hex: str):
-        """Zwraca QIcon 1x1 w kolorze color_hex – zlewa sie z paskiem."""
-        from PyQt6.QtGui import QPixmap, QIcon
-        pm = QPixmap(1, 1)
-        pm.fill(QColor(color_hex))
-        return QIcon(pm)
+    def _load_app_icon():
+        """Laduje ikone aplikacji z pliku .ico."""
+        from PyQt6.QtGui import QIcon
+        icon_path = Path(__file__).parent / "icons" / "icon.ico"
+        if icon_path.exists():
+            return QIcon(str(icon_path))
+        return QIcon()
 
-    def _set_window_icon(self, color_hex: str):
-        self.setWindowIcon(self._make_invisible_icon(color_hex))
+    def _set_window_icon(self):
+        self.setWindowIcon(self._load_app_icon())
 
     def _load_title_font(self):
         font_dir = Path(__file__).parent / "fonts"
@@ -1225,7 +1226,7 @@ class MainWindow(QWidget):
         C = dict(THEMES[name])
         C.update(SIZES)
 
-        self._set_window_icon(C["BG_APP"])
+        self._set_window_icon()
         self.setStyleSheet(f"background-color: {C['BG_APP']};")
 
         self.title_bar.setStyleSheet(f"background-color: {C['BG_APP']};")
