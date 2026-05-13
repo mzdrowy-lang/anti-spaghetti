@@ -3,6 +3,7 @@ import json
 import os
 import uuid
 import hashlib
+import shutil
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -488,7 +489,8 @@ class MainWindow(QWidget):
                 fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 self._lock_file.write(str(os.getpid()))
                 self._lock_file.flush()
-        except Exception:
+        except Exception as e:
+            log.warning("Nie udalo sie uzyskac locka pliku: %s", e)
             if hasattr(self, '_lock_file') and self._lock_file:
                 try:
                     self._lock_file.close()
@@ -1012,11 +1014,11 @@ class MainWindow(QWidget):
                         return
                     self._notes = [
                         n for n in data
-                        if isinstance(n, dict) and "id" in n and "name" in n
+                        if isinstance(n, dict) and isinstance(n.get("id"), str) and isinstance(n.get("name"), str)
                     ]
-                    # Dodaj brakujące klucze
+                    # Dodaj brakujące klucze i waliduj typy
                     for note in self._notes:
-                        note.setdefault("content", "")
+                        note["content"] = note.get("content") if isinstance(note.get("content"), str) else ""
                         note.setdefault("created_at", datetime.now().isoformat())
                         note.setdefault("updated_at", datetime.now().isoformat())
                     self._migrate_notes()
@@ -1035,7 +1037,6 @@ class MainWindow(QWidget):
         """Tworzy kopię zapasową uszkodzonego pliku."""
         try:
             backup_path = path.with_suffix(f".json.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-            import shutil
             shutil.copy2(path, backup_path)
         except Exception:
             pass
@@ -2064,9 +2065,11 @@ class MainWindow(QWidget):
 
         matching_ids = set()
         for note in self._notes:
-            if (text in note["name"].lower() or
-                    text in note.get("content", "").lower()):
-                matching_ids.add(note["id"])
+            note_name = note.get("name", "")
+            note_content = note.get("content", "")
+            if isinstance(note_name, str) and isinstance(note_content, str):
+                if text in note_name.lower() or text in note_content.lower():
+                    matching_ids.add(note["id"])
 
         for btn in self._buttons:
             btn.setVisible(btn._note_id in matching_ids)
@@ -2251,9 +2254,15 @@ class MainWindow(QWidget):
 
     def closeEvent(self, event):
         self._sync_editor_to_note()
-        self.save_notes()
-        self._release_lock()
+        try:
+            self.save_notes()
+        finally:
+            self._release_lock()
         event.accept()
+
+    def __del__(self):
+        """Zwalnia lock przy usuwaniu obiektu."""
+        self._release_lock()
 
 
 # ──────────────────────────────────────────────
