@@ -536,7 +536,7 @@ class MainWindow(QWidget):
         main_layout.setSpacing(0)
 
         self.title_bar = QWidget()
-        self.title_bar.setFixedHeight(40)
+        self.title_bar.setFixedHeight(44)
         self.title_bar.setStyleSheet(f"background-color: {BG_APP};")
         title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(14, 0, 6, 0)
@@ -547,7 +547,7 @@ class MainWindow(QWidget):
         if icon_path.exists():
             from PyQt6.QtGui import QPixmap
             pixmap = QPixmap(str(icon_path))
-            self.title_icon.setPixmap(pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.title_icon.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         self.title_icon.setStyleSheet("background: transparent;")
         title_layout.addWidget(self.title_icon)
 
