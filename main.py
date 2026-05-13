@@ -20,7 +20,7 @@ if not log.handlers:
     log.addHandler(handler)
 
 from PyQt6.QtGui import QFont, QPainter, QColor, QKeySequence, QShortcut, QFontDatabase, QRegularExpressionValidator
-from PyQt6.QtCore import Qt, QSize, QTimer, QRegularExpression, QRect
+from PyQt6.QtCore import Qt, QSize, QTimer, QRegularExpression, QRect, QEvent
 import qtawesome
 from PyQt6.QtWidgets import (
     QApplication,
@@ -459,6 +459,7 @@ class MainWindow(QWidget):
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
         self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._setup_ui()
         self._apply_font_size()
         self._setup_shortcuts()
@@ -937,6 +938,17 @@ class MainWindow(QWidget):
             "bottomleft": Qt.CursorShape.SizeBDiagCursor,
         }
         return cursors.get(edge, Qt.CursorShape.ArrowCursor)
+
+    def event(self, event):
+        """Przechwytuje HoverMove (WA_Hover) do zmiany kursora na krawedziach."""
+        if event.type() == QEvent.Type.HoverMove:
+            if not self.isMaximized():
+                edge = self._edge_at(event.position().toPoint())
+                if edge:
+                    self.setCursor(self._edge_cursor(edge))
+                else:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+        return super().event(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
