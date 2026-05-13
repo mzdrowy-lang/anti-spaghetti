@@ -35,6 +35,9 @@ dev = [
     "pytest>=7.0",
     "pytest-qt>=4.0",
 ]
+hermes = [
+    "Flask>=3.0.0",
+]
 
 [project.scripts]
 anti-spaghetti = "main:main"
