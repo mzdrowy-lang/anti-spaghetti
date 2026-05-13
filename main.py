@@ -21,7 +21,21 @@ if not log.handlers:
 
 from PyQt6.QtGui import QFont, QPainter, QColor, QKeySequence, QShortcut, QFontDatabase, QRegularExpressionValidator
 from PyQt6.QtCore import Qt, QSize, QTimer, QRegularExpression, QRect, QEvent
-import qtawesome
+try:
+    import qtawesome
+except ImportError:
+    qtawesome = None
+    log.warning("qtawesome nie zainstalowane – ikony nie beda widoczne")
+
+def _icon(name: str, color: str):
+    """Bezpieczne wywołanie qtawesome.icon z fallbackiem."""
+    if qtawesome:
+        return qtawesome.icon(name, color=color)
+    from PyQt6.QtGui import QPixmap, QIcon
+    pm = QPixmap(1, 1)
+    pm.fill(QColor(0, 0, 0, 0))
+    return QIcon(pm)
+
 from PyQt6.QtWidgets import (
     QApplication,
     QWidget,
@@ -397,7 +411,7 @@ class SidebarButton(QPushButton):
                         break
 
                 if target_index is None:
-                    target_index = layout.count() - 1
+                    target_index = max(0, layout.count() - 2)
 
                 current_index = layout.indexOf(self)
                 if current_index != target_index:
@@ -673,7 +687,7 @@ class MainWindow(QWidget):
         self.count_label.setStyleSheet(f"color: {TEXT_DIM}; background: transparent;")
 
         self.settings_btn = QPushButton()
-        self.settings_btn.setIcon(qtawesome.icon("fa5s.cog", color=TEXT_DIM))
+        self.settings_btn.setIcon(_icon("fa5s.cog", color=TEXT_DIM))
         self.settings_btn.setIconSize(QSize(16, 16))
         self.settings_btn.setStyleSheet(QSS_SETTINGS_BTN)
         self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -722,28 +736,28 @@ class MainWindow(QWidget):
         bottom_layout.setSpacing(4)
 
         self.add_btn = QPushButton()
-        self.add_btn.setIcon(qtawesome.icon("fa5s.plus", color=TEXT_DIM))
+        self.add_btn.setIcon(_icon("fa5s.plus", color=TEXT_DIM))
         self.add_btn.setIconSize(QSize(20, 20))
         self.add_btn.setStyleSheet(QSS_BOTTOM_BTN)
         self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self._add_note)
 
         self.save_btn = QPushButton()
-        self.save_btn.setIcon(qtawesome.icon("fa5s.save", color=TEXT_DIM))
+        self.save_btn.setIcon(_icon("fa5s.save", color=TEXT_DIM))
         self.save_btn.setIconSize(QSize(20, 20))
         self.save_btn.setStyleSheet(QSS_BOTTOM_BTN)
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_btn.clicked.connect(self._save_current)
 
         self.copy_btn = QPushButton()
-        self.copy_btn.setIcon(qtawesome.icon("fa5s.copy", color=TEXT_DIM))
+        self.copy_btn.setIcon(_icon("fa5s.copy", color=TEXT_DIM))
         self.copy_btn.setIconSize(QSize(20, 20))
         self.copy_btn.setStyleSheet(QSS_BOTTOM_BTN)
         self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
 
         self.export_btn = QPushButton()
-        self.export_btn.setIcon(qtawesome.icon("fa5s.file-export", color=TEXT_DIM))
+        self.export_btn.setIcon(_icon("fa5s.file-export", color=TEXT_DIM))
         self.export_btn.setIconSize(QSize(20, 20))
         self.export_btn.setStyleSheet(QSS_BOTTOM_BTN)
         self.export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -763,7 +777,7 @@ class MainWindow(QWidget):
         self._search_timer.timeout.connect(self._do_search)
 
         self._btn_size_down = QPushButton()
-        self._btn_size_down.setIcon(qtawesome.icon("fa5s.minus", color=TEXT_DIM))
+        self._btn_size_down.setIcon(_icon("fa5s.minus", color=TEXT_DIM))
         self._btn_size_down.setIconSize(QSize(14, 14))
         self._btn_size_down.setStyleSheet(QSS_BOTTOM_BTN)
         self._btn_size_down.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -776,7 +790,7 @@ class MainWindow(QWidget):
         self.size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._btn_size_up = QPushButton()
-        self._btn_size_up.setIcon(qtawesome.icon("fa5s.plus", color=TEXT_DIM))
+        self._btn_size_up.setIcon(_icon("fa5s.plus", color=TEXT_DIM))
         self._btn_size_up.setIconSize(QSize(14, 14))
         self._btn_size_up.setStyleSheet(QSS_BOTTOM_BTN)
         self._btn_size_up.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1225,11 +1239,10 @@ class MainWindow(QWidget):
             self._buttons.append(btn)
 
         # dostosuj nowe przyciski do aktualnego motywu i czcionki
-        if self._theme_name != "Klasyczny":
-            C = dict(self._theme_colors)
-            C.update(SIZES)
-            for btn in self._buttons:
-                btn.setStyleSheet(_build_qss(QSS_SIDEBAR_BTN_TPL, C))
+        C = dict(self._theme_colors)
+        C.update(SIZES)
+        for btn in self._buttons:
+            btn.setStyleSheet(_build_qss(QSS_SIDEBAR_BTN_TPL, C))
 
     # ─── motywy ───
 
@@ -1304,20 +1317,20 @@ class MainWindow(QWidget):
         self.search_edit.setStyleSheet(_build_qss(QSS_SEARCH_TPL, C))
 
         d = C["TEXT_DIM"]
-        self.add_btn.setIcon(qtawesome.icon("fa5s.plus", color=d))
+        self.add_btn.setIcon(_icon("fa5s.plus", color=d))
         self.add_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
-        self.save_btn.setIcon(qtawesome.icon("fa5s.save", color=d))
+        self.save_btn.setIcon(_icon("fa5s.save", color=d))
         self.save_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
-        self.copy_btn.setIcon(qtawesome.icon("fa5s.copy", color=d))
+        self.copy_btn.setIcon(_icon("fa5s.copy", color=d))
         self.copy_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
-        self.export_btn.setIcon(qtawesome.icon("fa5s.file-export", color=d))
+        self.export_btn.setIcon(_icon("fa5s.file-export", color=d))
         self.export_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
-        self._btn_size_down.setIcon(qtawesome.icon("fa5s.minus", color=d))
+        self._btn_size_down.setIcon(_icon("fa5s.minus", color=d))
         self._btn_size_down.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
-        self._btn_size_up.setIcon(qtawesome.icon("fa5s.plus", color=d))
+        self._btn_size_up.setIcon(_icon("fa5s.plus", color=d))
         self._btn_size_up.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
         self.size_label.setStyleSheet(f"color: {d}; background: transparent;")
-        self.settings_btn.setIcon(qtawesome.icon("fa5s.cog", color=d))
+        self.settings_btn.setIcon(_icon("fa5s.cog", color=d))
         self.settings_btn.setStyleSheet(_build_qss(QSS_SETTINGS_BTN_TPL, C))
 
         # odśwież globalny styl QMenu
@@ -2032,24 +2045,24 @@ class MainWindow(QWidget):
     def _show_save_feedback(self):
         """Pokazuje krótkie potwierdzenie zapisu."""
         d = self._theme_colors["TEXT_DIM"]
-        self.save_btn.setIcon(qtawesome.icon("fa5s.check", color=d))
+        self.save_btn.setIcon(_icon("fa5s.check", color=d))
         QTimer.singleShot(1000, self._reset_save_icon)
 
     def _reset_save_icon(self):
         d = self._theme_colors["TEXT_DIM"]
-        self.save_btn.setIcon(qtawesome.icon("fa5s.save", color=d))
+        self.save_btn.setIcon(_icon("fa5s.save", color=d))
 
     def _copy_to_clipboard(self):
         text = self.editor.toPlainText()
         if text:
             QApplication.clipboard().setText(text)
             d = self._theme_colors["TEXT_DIM"]
-            self.copy_btn.setIcon(qtawesome.icon("fa5s.check", color=d))
+            self.copy_btn.setIcon(_icon("fa5s.check", color=d))
             QTimer.singleShot(1000, self._reset_copy_icon)
 
     def _reset_copy_icon(self):
         d = self._theme_colors["TEXT_DIM"]
-        self.copy_btn.setIcon(qtawesome.icon("fa5s.copy", color=d))
+        self.copy_btn.setIcon(_icon("fa5s.copy", color=d))
 
     # ─── eksport notatek ───
 
@@ -2390,6 +2403,7 @@ class MainWindow(QWidget):
         if not text:
             for btn in self._buttons:
                 btn.setVisible(True)
+            self.count_label.setText(f"{len(self._notes)} element\u00f3w")
             return
 
         matching_ids = set()
@@ -2400,8 +2414,13 @@ class MainWindow(QWidget):
                 if text in note_name.lower() or text in note_content.lower():
                     matching_ids.add(note["id"])
 
+        visible_count = 0
         for btn in self._buttons:
-            btn.setVisible(btn._note_id in matching_ids)
+            visible = btn._note_id in matching_ids
+            btn.setVisible(visible)
+            if visible:
+                visible_count += 1
+        self.count_label.setText(f"{visible_count} z {len(self._notes)}")
 
     # ─── liczniki ───
 
@@ -2586,13 +2605,11 @@ class MainWindow(QWidget):
         self._sync_editor_to_note()
         try:
             self.save_notes()
+        except Exception as e:
+            log.error("Blad zapisu przy zamykaniu: %s", e)
         finally:
             self._release_lock()
         event.accept()
-
-    def __del__(self):
-        """Zwalnia lock przy usuwaniu obiektu."""
-        self._release_lock()
 
 
 # ──────────────────────────────────────────────
@@ -2646,6 +2663,7 @@ def main():
     """)
 
     window = MainWindow()
+    app.aboutToQuit.connect(window._release_lock)
     window.show()
 
     sys.exit(app.exec())
