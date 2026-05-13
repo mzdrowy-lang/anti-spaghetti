@@ -29,6 +29,8 @@ a projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
 - Kopie zapasowe uszkodzonych plików danych
 - Obsługa klawisza Escape w dialogach
 - File locking (zapobiega konfliktom instancji)
+- Eksport notatek (JSON, Markdown, TXT)
+- Przycisk eksportu + skrót Ctrl+E
 - 23 testy automatyczne (pytest)
 
 ### Bezpieczeństwo
@@ -44,6 +46,12 @@ a projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
 - Brak aktualizacji tytułu okna przy zmianie notatki
 - Niespójne wcięcia w słowniku SIZES
 - SHA-256 bez salt → PBKDF2
+- Brak zapisu kolejności po drag-and-drop (_reorder_notes)
+- Desynchronizacja layoutu przy przeciąganiu (race condition)
+- __del__ nie gwarantuje zwolnienia locka → app.aboutToQuit
+- _show_data_error wywoływane przed inicjalizacją UI
+- _save_current nie aktualizuje updated_at
+- search_edit nie czyści się przy dodawaniu notatki
 
 ### Techniczne
 - QTextEdit → QPlainTextEdit (wydajność)

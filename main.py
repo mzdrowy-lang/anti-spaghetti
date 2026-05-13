@@ -401,10 +401,8 @@ class SidebarButton(QPushButton):
 
                 current_index = layout.indexOf(self)
                 if current_index != target_index:
-                    window = self.window()
-                    if isinstance(window, MainWindow):
-                        window._reorder_notes(self._note_id, target_index)
                     layout.insertWidget(target_index, self)
+                    self._final_drag_index = target_index
             except Exception:
                 self._dragging = False
                 self._drag_start_pos = None
@@ -423,6 +421,9 @@ class SidebarButton(QPushButton):
                 self.releaseMouse()
             window = self.window()
             if isinstance(window, MainWindow):
+                if hasattr(self, '_final_drag_index'):
+                    window._reorder_notes(self._note_id, self._final_drag_index)
+                    delattr(self, '_final_drag_index')
                 window.save_notes()
             event.accept()
         else:
@@ -740,6 +741,14 @@ class MainWindow(QWidget):
         self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
 
+        self.export_btn = QPushButton()
+        self.export_btn.setIcon(qtawesome.icon("fa5s.file-export", color=TEXT_DIM))
+        self.export_btn.setIconSize(QSize(20, 20))
+        self.export_btn.setStyleSheet(QSS_BOTTOM_BTN)
+        self.export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_btn.setToolTip("Eksportuj notatki (Ctrl+E)")
+        self.export_btn.clicked.connect(self._show_export_dialog)
+
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Szukaj...")
         self.search_edit.setStyleSheet(QSS_SEARCH)
@@ -779,6 +788,7 @@ class MainWindow(QWidget):
         bottom_layout.addWidget(self.add_btn)
         bottom_layout.addWidget(self.save_btn)
         bottom_layout.addWidget(self.copy_btn)
+        bottom_layout.addWidget(self.export_btn)
         bottom_layout.addWidget(self._btn_size_down)
         bottom_layout.addWidget(self.size_label)
         bottom_layout.addWidget(self._btn_size_up)
@@ -794,6 +804,7 @@ class MainWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+-"), self).activated.connect(self._font_size_down)
         QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(self._next_note)
         QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(self._prev_note)
+        QShortcut(QKeySequence("Ctrl+e"), self).activated.connect(self._show_export_dialog)
 
     def _next_note(self):
         if not self._notes:
@@ -1286,6 +1297,8 @@ class MainWindow(QWidget):
         self.save_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
         self.copy_btn.setIcon(qtawesome.icon("fa5s.copy", color=d))
         self.copy_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
+        self.export_btn.setIcon(qtawesome.icon("fa5s.file-export", color=d))
+        self.export_btn.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
         self._btn_size_down.setIcon(qtawesome.icon("fa5s.minus", color=d))
         self._btn_size_down.setStyleSheet(_build_qss(QSS_BOTTOM_BTN_TPL, C))
         self._btn_size_up.setIcon(qtawesome.icon("fa5s.plus", color=d))
@@ -1784,6 +1797,8 @@ class MainWindow(QWidget):
             self.editor.clear()
             self._update_counters()
             self.save_notes()
+            self.search_edit.clear()
+            self._do_search()
 
     def _confirm_delete(self, note_id: str):
         note = next((n for n in self._notes if n["id"] == note_id), None)
@@ -1992,6 +2007,11 @@ class MainWindow(QWidget):
 
     def _save_current(self):
         self._sync_editor_to_note()
+        if self._active_note_id is not None:
+            for note in self._notes:
+                if note["id"] == self._active_note_id:
+                    note["updated_at"] = datetime.now().isoformat()
+                    break
         self.save_notes()
         self._dirty = False
         self._show_save_feedback()
@@ -2017,6 +2037,302 @@ class MainWindow(QWidget):
     def _reset_copy_icon(self):
         d = self._theme_colors["TEXT_DIM"]
         self.copy_btn.setIcon(qtawesome.icon("fa5s.copy", color=d))
+
+    # ─── eksport notatek ───
+
+    def _show_export_dialog(self):
+        """Pokazuje dialog eksportu z wyborem formatu."""
+        C = self._theme_colors
+
+        dialog = DraggableDialog(self)
+        dialog.setObjectName("ExportDialog")
+        dialog.setFixedSize(380, 280)
+        dialog.setStyleSheet(f"""
+            QDialog#ExportDialog {{
+                background-color: {C["BG_EDITOR"]};
+                border: 1px solid {C["SEPARATOR"]};
+                border-radius: 12px;
+            }}
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        title = QLabel("Eksport notatek")
+        title.setFont(self._make_font(SIZES["HEADER_FONT_SIZE"], bold=True))
+        title.setStyleSheet(f"color: {C['TEXT_MAIN']}; background: transparent;")
+        layout.addWidget(title)
+
+        from PyQt6.QtWidgets import QRadioButton, QButtonGroup
+
+        format_group = QButtonGroup(dialog)
+        formats = [
+            ("json", "JSON (backup \u2013 wszystkie notatki)"),
+            ("md_all", "Markdown \u2013 wszystkie notatki"),
+            ("md_single", "Markdown \u2013 pojedyncza notatka"),
+            ("txt", "TXT \u2013 pojedyncza notatka"),
+        ]
+
+        for fmt_id, fmt_label in formats:
+            rb = QRadioButton(fmt_label)
+            rb.setFont(self._make_font(SIZES["BASE_FONT_SIZE"]))
+            rb.setStyleSheet(f"""
+                QRadioButton {{
+                    color: {C['TEXT_MAIN']};
+                    background: transparent;
+                    spacing: 8px;
+                }}
+                QRadioButton::indicator {{
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    border: 2px solid {C['ACCENT']};
+                }}
+                QRadioButton::indicator:checked {{
+                    background-color: {C['ACCENT']};
+                }}
+            """)
+            rb.setChecked(fmt_id == "json")
+            format_group.addButton(rb)
+            rb._fmt_id = fmt_id
+            layout.addWidget(rb)
+
+        layout.addStretch()
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        btn_export = QPushButton("Eksportuj")
+        btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_export.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C["ACCENT"]};
+                color: {C["TEXT_MAIN"]};
+                border: none;
+                border-radius: 8px;
+                padding: 10px 0px;
+                font-size: {SIZES["BASE_FONT_SIZE"]}px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C["BG_BTN_HOVER"]};
+            }}
+        """)
+
+        btn_cancel = QPushButton("Anuluj")
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {C["TEXT_DIM"]};
+                border: 1px solid {C["SEPARATOR"]};
+                border-radius: 8px;
+                padding: 10px 0px;
+                font-size: {SIZES["BASE_FONT_SIZE"]}px;
+            }}
+            QPushButton:hover {{
+                background-color: {C["BG_BTN_HOVER"]};
+                color: {C["TEXT_MAIN"]};
+            }}
+        """)
+
+        def do_export():
+            checked = format_group.checkedButton()
+            if not checked:
+                return
+            fmt = checked._fmt_id
+            dialog.accept()
+            self._execute_export(fmt)
+
+        btn_export.clicked.connect(do_export)
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_export)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        center = self.geometry().center()
+        dialog.move(center.x() - dialog.width() // 2, center.y() - dialog.height() // 2)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _execute_export(self, fmt: str):
+        """Wykonuje eksport w wybranym formacie."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        C = self._theme_colors
+
+        if fmt == "json":
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Eksport JSON", "antispaghetti_backup.json", "JSON (*.json)"
+            )
+            if path:
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(self._notes, f, ensure_ascii=False, indent=2)
+                    self._show_export_success(f"Zapisano {len(self._notes)} notatek")
+                except Exception as e:
+                    self._show_export_error(str(e))
+
+        elif fmt == "md_single":
+            if self._active_note_id is None:
+                self._show_export_error("Nie wybrano notatki")
+                return
+            note = next((n for n in self._notes if n["id"] == self._active_note_id), None)
+            if not note:
+                return
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Eksport Markdown", f"{note['name']}.md", "Markdown (*.md)"
+            )
+            if path:
+                try:
+                    content = f"# {note['name']}\n\n"
+                    content += f"*Utworzono: {note.get('created_at', 'nieznany')}*\n"
+                    content += f"*Zaktualizowano: {note.get('updated_at', 'nieznany')}*\n\n"
+                    content += note.get("content", "")
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    self._show_export_success(f"Zapisano: {path}")
+                except Exception as e:
+                    self._show_export_error(str(e))
+
+        elif fmt == "md_all":
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Eksport Markdown", "antispaghetti_notes.md", "Markdown (*.md)"
+            )
+            if path:
+                try:
+                    lines = ["# Anti-Spaghetti \u2013 Eksport notatek\n\n"]
+                    for note in self._notes:
+                        lines.append(f"## {note['name']}\n\n")
+                        lines.append(f"*ID: {note['id']}*\n")
+                        lines.append(f"*Utworzono: {note.get('created_at', 'nieznany')}*\n")
+                        lines.append(f"*Zaktualizowano: {note.get('updated_at', 'nieznany')}*\n\n")
+                        lines.append(note.get("content", ""))
+                        lines.append("\n\n---\n\n")
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write("".join(lines))
+                    self._show_export_success(f"Zapisano {len(self._notes)} notatek")
+                except Exception as e:
+                    self._show_export_error(str(e))
+
+        elif fmt == "txt":
+            if self._active_note_id is None:
+                self._show_export_error("Nie wybrano notatki")
+                return
+            note = next((n for n in self._notes if n["id"] == self._active_note_id), None)
+            if not note:
+                return
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Eksport TXT", f"{note['name']}.txt", "Text (*.txt)"
+            )
+            if path:
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(note.get("content", ""))
+                    self._show_export_success(f"Zapisano: {path}")
+                except Exception as e:
+                    self._show_export_error(str(e))
+
+    def _show_export_success(self, msg: str):
+        """Pokazuje potwierdzenie eksportu."""
+        C = self._theme_colors
+        dialog = DraggableDialog(self)
+        dialog.setFixedSize(340, 140)
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: {C["BG_EDITOR"]};
+                border: 1px solid #27ae60;
+                border-radius: 12px;
+            }}
+        """)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        lbl = QLabel("Eksport zako\u0144czony")
+        lbl.setFont(self._make_font(SIZES["BASE_FONT_SIZE"], bold=True))
+        lbl.setStyleSheet("color: #27ae60; background: transparent;")
+        layout.addWidget(lbl)
+
+        msg_lbl = QLabel(msg)
+        msg_lbl.setFont(self._make_font(SIZES["SMALL_FONT_SIZE"]))
+        msg_lbl.setStyleSheet(f"color: {C['TEXT_MAIN']}; background: transparent;")
+        msg_lbl.setWordWrap(True)
+        layout.addWidget(msg_lbl)
+
+        btn = QPushButton("OK")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C["ACCENT"]};
+                color: {C["TEXT_MAIN"]};
+                border: none;
+                border-radius: 8px;
+                padding: 8px 0px;
+                font-size: {SIZES["BASE_FONT_SIZE"]}px;
+            }}
+            QPushButton:hover {{
+                background-color: {C["BG_BTN_HOVER"]};
+            }}
+        """)
+        btn.clicked.connect(dialog.accept)
+        layout.addWidget(btn)
+
+        center = self.geometry().center()
+        dialog.move(center.x() - dialog.width() // 2, center.y() - dialog.height() // 2)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _show_export_error(self, msg: str):
+        """Pokazuje błąd eksportu."""
+        C = self._theme_colors
+        dialog = DraggableDialog(self)
+        dialog.setFixedSize(340, 140)
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: {C["BG_EDITOR"]};
+                border: 1px solid #e74c3c;
+                border-radius: 12px;
+            }}
+        """)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        lbl = QLabel("B\u0142\u0105d eksportu")
+        lbl.setFont(self._make_font(SIZES["BASE_FONT_SIZE"], bold=True))
+        lbl.setStyleSheet("color: #e74c3c; background: transparent;")
+        layout.addWidget(lbl)
+
+        msg_lbl = QLabel(msg)
+        msg_lbl.setFont(self._make_font(SIZES["SMALL_FONT_SIZE"]))
+        msg_lbl.setStyleSheet(f"color: {C['TEXT_MAIN']}; background: transparent;")
+        msg_lbl.setWordWrap(True)
+        layout.addWidget(msg_lbl)
+
+        btn = QPushButton("OK")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C["ACCENT"]};
+                color: {C["TEXT_MAIN"]};
+                border: none;
+                border-radius: 8px;
+                padding: 8px 0px;
+                font-size: {SIZES["BASE_FONT_SIZE"]}px;
+            }}
+            QPushButton:hover {{
+                background-color: {C["BG_BTN_HOVER"]};
+            }}
+        """)
+        btn.clicked.connect(dialog.accept)
+        layout.addWidget(btn)
+
+        center = self.geometry().center()
+        dialog.move(center.x() - dialog.width() // 2, center.y() - dialog.height() // 2)
+        dialog.exec()
+        dialog.deleteLater()
 
     # ─── menu kontekstowe edytora i wyszukiwarki ───
 
@@ -2148,6 +2464,7 @@ class MainWindow(QWidget):
         new_index = max(0, min(new_index, len(self._notes) - 1))
         note = self._notes.pop(old_index)
         self._notes.insert(new_index, note)
+        self.save_notes()
 
     # ─── ustawienia – rozbudowane menu ───
 
