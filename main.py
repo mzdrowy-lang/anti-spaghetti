@@ -2396,8 +2396,8 @@ class MainWindow(QWidget):
         menu = QMenu(self)
         clipboard = QApplication.clipboard()
         actions = {
-            "Cofnij":   (self.editor.undo, self.editor.isUndoAvailable()),
-            "Pon\u00f3w":  (self.editor.redo, self.editor.isRedoAvailable()),
+            "Cofnij":   (self.editor.undo, self.editor.document().isUndoAvailable()),
+            "Pon\u00f3w":  (self.editor.redo, self.editor.document().isRedoAvailable()),
         }
         for label, (slot, enabled) in actions.items():
             a = menu.addAction(label)
