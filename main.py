@@ -4,7 +4,9 @@ import os
 import uuid
 import hashlib
 import shutil
+import re
 import logging
+import atexit
 from pathlib import Path
 from datetime import datetime
 
@@ -31,9 +33,15 @@ def _icon(name: str, color: str):
     """Bezpieczne wywołanie qtawesome.icon z fallbackiem."""
     if qtawesome:
         return qtawesome.icon(name, color=color)
-    from PyQt6.QtGui import QPixmap, QIcon
-    pm = QPixmap(1, 1)
+    from PyQt6.QtGui import QPixmap, QIcon, QPainter, QPen
+    pm = QPixmap(20, 20)
     pm.fill(QColor(0, 0, 0, 0))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), 2))
+    p.drawLine(4, 10, 16, 10)
+    p.drawLine(10, 4, 10, 16)
+    p.end()
     return QIcon(pm)
 
 from PyQt6.QtWidgets import (
@@ -398,6 +406,18 @@ class SidebarButton(QPushButton):
                 parent = self.parentWidget()
                 local_pos = parent.mapFromGlobal(global_pos)
                 layout = parent.layout()
+
+                # Autoscroll przy przeciaganiu
+                from PyQt6.QtWidgets import QScrollArea
+                scroll_area = self.window().findChild(QScrollArea)
+                if scroll_area:
+                    vbar = scroll_area.verticalScrollBar()
+                    viewport_pos = scroll_area.viewport().mapFromGlobal(global_pos)
+                    margin = 30
+                    if viewport_pos.y() < margin:
+                        vbar.setValue(vbar.value() - 15)
+                    elif viewport_pos.y() > scroll_area.viewport().height() - margin:
+                        vbar.setValue(vbar.value() + 15)
 
                 target_index = None
                 for i in range(layout.count() - 1):
@@ -907,6 +927,11 @@ class MainWindow(QWidget):
     def _set_window_icon(self):
         self.setWindowIcon(self._load_app_icon())
 
+    @staticmethod
+    def _sanitize_filename(name: str) -> str:
+        """Usuwa niedozwolone znaki z nazwy pliku."""
+        return re.sub(r'[<>:"/\\|?*]', '_', name)[:80]
+
     def _load_title_font(self):
         font_dir = Path(__file__).parent / "fonts"
         if font_dir.exists():
@@ -1057,8 +1082,10 @@ class MainWindow(QWidget):
                     # Dodaj brakujące klucze i waliduj typy
                     for note in self._notes:
                         note["content"] = note.get("content") if isinstance(note.get("content"), str) else ""
-                        note.setdefault("created_at", datetime.now().isoformat())
-                        note.setdefault("updated_at", datetime.now().isoformat())
+                        if "created_at" not in note:
+                            note["created_at"] = datetime.now().isoformat()
+                        if "updated_at" not in note:
+                            note["updated_at"] = note["created_at"]
                     self._migrate_notes()
             except json.JSONDecodeError as e:
                 self._show_data_error(f"Błąd parsowania notes.json: {e}\nUtworzono kopię zapasową.")
@@ -1243,6 +1270,7 @@ class MainWindow(QWidget):
         C.update(SIZES)
         for btn in self._buttons:
             btn.setStyleSheet(_build_qss(QSS_SIDEBAR_BTN_TPL, C))
+            btn.setChecked(btn._note_id == self._active_note_id)
 
     # ─── motywy ───
 
@@ -1715,7 +1743,9 @@ class MainWindow(QWidget):
         unlock_btn.clicked.connect(try_unlock)
         pin_edit.returnPressed.connect(try_unlock)
 
+        self.setEnabled(False)
         lock.exec()
+        self.setEnabled(True)
         lock.deleteLater()
 
     # ─── operacje na wpisach ───
@@ -2208,7 +2238,7 @@ class MainWindow(QWidget):
             if not note:
                 return
             path, _ = QFileDialog.getSaveFileName(
-                self, "Eksport Markdown", f"{note['name']}.md", "Markdown (*.md)"
+                self, "Eksport Markdown", f"{self._sanitize_filename(note['name'])}.md", "Markdown (*.md)"
             )
             if path:
                 try:
@@ -2250,7 +2280,7 @@ class MainWindow(QWidget):
             if not note:
                 return
             path, _ = QFileDialog.getSaveFileName(
-                self, "Eksport TXT", f"{note['name']}.txt", "Text (*.txt)"
+                self, "Eksport TXT", f"{self._sanitize_filename(note['name'])}.txt", "Text (*.txt)"
             )
             if path:
                 try:
@@ -2366,12 +2396,23 @@ class MainWindow(QWidget):
         menu = QMenu(self)
         clipboard = QApplication.clipboard()
         actions = {
+            "Cofnij":   (self.editor.undo, self.editor.isUndoAvailable()),
+            "Pon\u00f3w":  (self.editor.redo, self.editor.isRedoAvailable()),
+        }
+        for label, (slot, enabled) in actions.items():
+            a = menu.addAction(label)
+            a.setEnabled(enabled)
+            a.triggered.connect(slot)
+
+        menu.addSeparator()
+
+        actions2 = {
             "Wytnij":   (self.editor.cut,   self.editor.textCursor().hasSelection()),
             "Kopiuj":   (self.editor.copy,  self.editor.textCursor().hasSelection()),
             "Wklej":    (self.editor.paste, clipboard.text() != ""),
             "Zaznacz wszystko": (self.editor.selectAll, True),
         }
-        for label, (slot, enabled) in actions.items():
+        for label, (slot, enabled) in actions2.items():
             a = menu.addAction(label)
             a.setEnabled(enabled)
             a.triggered.connect(slot)
@@ -2603,10 +2644,21 @@ class MainWindow(QWidget):
 
     def closeEvent(self, event):
         self._sync_editor_to_note()
+        self._auto_save_timer.stop()
+        self._auto_save()
         try:
             self.save_notes()
         except Exception as e:
             log.error("Blad zapisu przy zamykaniu: %s", e)
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.critical(
+                self, "Błąd zapisu",
+                "Nie udało się zapisać notatek.\nZamknąć mimo to?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
         finally:
             self._release_lock()
         event.accept()
@@ -2664,6 +2716,7 @@ def main():
 
     window = MainWindow()
     app.aboutToQuit.connect(window._release_lock)
+    atexit.register(window._release_lock)
     window.show()
 
     sys.exit(app.exec())
